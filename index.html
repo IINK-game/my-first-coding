@@ -1,36 +1,212 @@
+説明文も一緒に入っているね。**`index.html` の中身を全部消して、下のコードだけを貼ってね。** ボールが動いて、マウスでバーを操作できる完成版だよ。
+
+```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>はじめてのゲーム</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ブロック崩し</title>
+  <style>
+    body {
+      background: #101820;
+      color: white;
+      text-align: center;
+      font-family: sans-serif;
+    }
+    canvas {
+      background: #182838;
+      max-width: 100%;
+      touch-action: none;
+    }
+    button {
+      padding: 12px 24px;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
   <h1>ブロック崩し</h1>
-  <canvas id="game" width="600" height="400"
-          style="background: #182030;"></canvas>
-次は、ゲーム画面に**ボールとバー**を描こう！
+  <p>マウス・タッチ・左右キーでバーを動かそう！</p>
+  <p id="message">スコア：0</p>
+  <canvas id="game" width="600" height="400"></canvas>
+  <p><button id="start">スタート / もう一度</button></p>
 
-GitHubで `index.html` を開いて、右上の **鉛筆マーク ✏️** を押してね。
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const message = document.getElementById("message");
 
-`</body>` の**すぐ上**に、これを追加しよう。
+    let x, y, speedX, speedY;
+    let barX = 250;
+    let score = 0;
+    let playing = false;
+    let blocks = [];
+    let left = false;
+    let right = false;
+    let lastTime = 0;
 
-```html
-<script>
-  const canvas = document.getElementById("game");
-  const ctx = canvas.getContext("2d");
+    function reset() {
+      x = 300;
+      y = 300;
+      speedX = 180;
+      speedY = -180;
+      barX = 250;
+      score = 0;
+      blocks = [];
 
-  // 白いボール
-  ctx.fillStyle = "white";
-  ctx.beginPath();
-  ctx.arc(300, 300, 8, 0, Math.PI * 2);
-  ctx.fill();
+      for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 8; col++) {
+          blocks.push({
+            x: 24 + col * 70,
+            y: 35 + row * 30,
+            alive: true
+          });
+        }
+      }
 
-  // 緑のバー
-  ctx.fillStyle = "lightgreen";
-  ctx.fillRect(250, 370, 100, 12);
-</script>
-```
+      message.textContent = "スコア：0";
+    }
 
-追加したら **「Commit changes…」で保存**してね。まだ動かないけど、次にボールを動かすよ！
+    document.getElementById("start").onclick = function () {
+      reset();
+      playing = true;
+    };
+
+    function moveBar(clientX) {
+      const rect = canvas.getBoundingClientRect();
+      barX = (clientX - rect.left) * 600 / rect.width - 50;
+      barX = Math.max(0, Math.min(500, barX));
+    }
+
+    canvas.onpointermove = function (event) {
+      moveBar(event.clientX);
+    };
+
+    canvas.onpointerdown = function (event) {
+      canvas.setPointerCapture(event.pointerId);
+      moveBar(event.clientX);
+    };
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "ArrowLeft") {
+        left = true;
+        event.preventDefault();
+      }
+      if (event.key === "ArrowRight") {
+        right = true;
+        event.preventDefault();
+      }
+    });
+
+    document.addEventListener("keyup", function (event) {
+      if (event.key === "ArrowLeft") left = false;
+      if (event.key === "ArrowRight") right = false;
+    });
+
+    window.addEventListener("blur", function () {
+      left = false;
+      right = false;
+    });
+
+    function update(dt) {
+      if (left) barX -= 360 * dt;
+      if (right) barX += 360 * dt;
+      barX = Math.max(0, Math.min(500, barX));
+
+      const oldY = y;
+      x += speedX * dt;
+      y += speedY * dt;
+
+      // 左右と上の壁で跳ね返る
+      if (x < 8) {
+        x = 8;
+        speedX = Math.abs(speedX);
+      }
+      if (x > 592) {
+        x = 592;
+        speedX = -Math.abs(speedX);
+      }
+      if (y < 8) {
+        y = 8;
+        speedY = Math.abs(speedY);
+      }
+
+      // バーで跳ね返る
+      if (
+        speedY > 0 &&
+        oldY + 8 <= 370 &&
+        y + 8 >= 370 &&
+        x + 8 >= barX &&
+        x - 8 <= barX + 100
+      ) {
+        y = 362;
+        speedY = -Math.abs(speedY);
+        speedX = (x - (barX + 50)) * 5;
+      }
+
+      // ブロックに当たったら消す
+      for (const block of blocks) {
+        if (
+          block.alive &&
+          x + 8 > block.x &&
+          x - 8 < block.x + 62 &&
+          y + 8 > block.y &&
+          y - 8 < block.y + 20
+        ) {
+          block.alive = false;
+          speedY = -speedY;
+          score += 10;
+          message.textContent = "スコア：" + score;
+
+          if (blocks.every(b => !b.alive)) {
+            playing = false;
+            message.textContent = "クリア！ スコア：" + score;
+          }
+          break;
+        }
+      }
+
+      // 下に落ちたら終了
+      if (y > 408) {
+        playing = false;
+        message.textContent = "ゲームオーバー！ スコア：" + score;
+      }
+    }
+
+    function draw(time) {
+      const dt = Math.min((time - lastTime) / 1000, 0.03);
+      lastTime = time;
+
+      if (playing) update(dt);
+
+      ctx.clearRect(0, 0, 600, 400);
+
+      for (const block of blocks) {
+        if (block.alive) {
+          ctx.fillStyle = "orange";
+          ctx.fillRect(block.x, block.y, 62, 20);
+        }
+      }
+
+      ctx.fillStyle = "lightgreen";
+      ctx.fillRect(barX, 370, 100, 12);
+
+      ctx.fillStyle = "white";
+      ctx.beginPath();
+      ctx.arc(x, y, 8, 0, Math.PI * 2);
+      ctx.fill();
+
+      requestAnimationFrame(draw);
+    }
+
+    reset();
+    requestAnimationFrame(draw);
+  </script>
 </body>
 </html>
+```
+
+**コピーするのは `<!DOCTYPE html>` から `</html>` までだけ。** 説明文や「```」は入れないでね。
+
+貼れたら、**「変更をコミット」（Commit changes）**で保存しよう！
